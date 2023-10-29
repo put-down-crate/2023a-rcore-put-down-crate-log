@@ -48,15 +48,20 @@ qemu做为硬件模拟器，那么问题出现的位置大概在qemu与bootloade
 ````
 kernel给出了祖传helloworld，大概算正常运行了吧。
 
+
+
 ### 4.按照要示编写代码
 #### 4.1. 完成实验指导书中的内容并在裸机上实现 hello world 输出
+本章代码默认已实现
 #### 4.2. 实现彩色输出宏 (只要求可以彩色输出，不要求 log 等级控制，不要求多种颜色)
+本章代码默认已实现
 #### 4.3. 隐形要求
 可以关闭内核所有输出。从 lab2 开始要求关闭内核所有输出（如果实现了 log 等级控制，那么这一点自然就实现了）。
 #### 4.4.利用彩色输出宏输出 os 内存空间布局
 输出 .text、.data、.rodata、.bss 各段位置，输出等级为 INFO。
+本章代码默认已实现
 #### 4.5. challenge: 支持多核，实现多个核的 boot
-
+#### 4.6 已修改代码完成输出后关机
 
 ### 5. 本章知识关注点
 #### 5.1. RISC-V的两种特权模式
@@ -96,3 +101,66 @@ https://www.rustwiki.org.cn/zh-CN/core/index.html
 #### 5.7. 内存地址对齐
 对于 RISC-V 处理器而言，load/store 指令进行数据访存时，数据在内存中的地址应该对齐。如果访存 32 位数据，内存地址应当按 32 位（4 字节）对齐。  
 如果数据的地址没有对齐，执行访存操作将产生异常。这也是在学习内核编程中经常碰到的一种bug。
+
+
+#### 5.8. QEMU启动相关
+三个地址:  
+QEMU开始执行        -->   物理地址0x1000
+bootloader开始执行  -->  物理地址0x80000000
+内核开始执行        -->   物理地址0x80200000
+##### 5.8.1. Qemu模拟的virt硬件平台上，物理内存的起始地址为0x80000000，物理内存默认大小为128MB 可以通过-m配置。
+##### 5.8.2. 做为bootloader的rustsbi_qemu.bin加载到物理内存以物理地址0x80000000开头的区域上。
+##### 5.8.3. 内核镜像os.bin加载到以物理地址0x80200000开头的区域上。
+##### 5.8.4. QEMU模拟启动流程的三个阶段
+###### 5.8.4.1. 由固化在QEMU内的一小段汇编程序负责
+QEMU CPU 程序计数器初始化为0x1000, 因此QEMU第一条指令在物理地址0x1000, 第一阶段指令完成后，跳转到物理地址0x80000000，此地址是固化在QEMU的，不通过源码无法修改。
+###### 5.8.4.2. 由bootloader负责
+本阶段自物理地址0x80000000开始执行，主要执行rustsbi_qemu.bin加载到本段的内容，然后跳转到物理地址0x80200000。
+###### 5.8.4.3. 由内核镜像负责
+本段自物理地址0x80200000开始执行，主要执行内核镜像加载到本段的内容。
+
+#### 5.9. 程序内存布局
+High Address&nbsp;| stack&nbsp;&nbsp;&nbsp;|^^^^^^^^^^^^^^^^  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| heap&nbsp;&nbsp;&nbsp;&nbsp;|  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| .bss&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|   Data Memory  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| .data&nbsp;&nbsp;&nbsp;&nbsp;|  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| .rodata |_________________________  
+Low Address   | .text&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|   Code Memory   
+
+
+##### 5.9.1. 代码部分段放在最低地址的.text段
+##### 5.9.2. 只读-已初始化全局数据，放入再高一点的.rodata段
+##### 5.9.3. 可改-已初始化全局数据，放入再再高一点的.data段
+##### 5.9.4. 未初始化全局数据，放入再再再高一点的.bss段，一般由程序加载者代为零初始化，即将这块区域逐字节清零
+##### 5.9.5. 再再再再高一点的堆段厚放程序运行时动态分配数据，向高地址增长
+##### 5.9.6. 再再再再再高一点的栈段用于函数上下文的保存与恢复，即与函数相关的局部数据或者叫局部变量会放在栈帖内，它向低地址增长，根据栈的运转特性，后进先出，其实就是所谓的现场保护。
+##### 那么问题来了，堆栈相邻，堆在栈下，栈在堆上，堆向高地址增长，也就是向栈方向增长，栈向低地址增长，也就是栈向堆方向增长，栈堆会不会存在互相覆盖的情况。段保护解决此类问题。
+##### 链接脚本可调整内核文件的内存布局加载物理地址
+##### 5.9.7. 内核文件与内核镜像
+bootloader加载内核文件时会将内核文件相关多余的元数据（大概会是些自描述环境配置之类的）丢掉，然后加载到0x80200000位置的称为内核镜像
+##### 5.9.8. riscv64-unknown-elf-gdb 在arch上为 riscv64-elf-gdb
+##### 5.9.9. risc-v指令
+###### 5.9.9.1. rs表示源寄存器 source register
+###### 5.9.9.2. imm表示立即数 immediate，是一个常数
+###### 5.9.9.3. rd表示目标寄存器 destination register
+###### 5.9.9.4. rs + imm 构成指令输入部分，rd是指令的输出部分
+###### 5.9.9.5. rs 和 rd 可以在 32 个通用寄存器 x0~x31 中选取。但是这三个部分都不是必须的，某些指令只有一种输入类型，另一些指令则没有输出部分。
+###### 5.9.9.6. 汇编伪指令 (Pseudo Instruction) ret 跳转回调用之前的位置
+###### 5.9.9.7. 函数调用跳转指令----jalr指令保存返回地址并实现跳转
+###### 5.9.9.7. 函数调用跳转指令----jal
+###### 5.9.9.8. 被调用者保存(Callee-Saved)寄存器 
+###### 5.9.9.9. 调用者保存(Call-Saved)寄存器 
+###### 5.9.9.10. 开场(Prologue)结尾(Epilogue)
+
+##### 5.9.9. risc-v通用寄存器使用约定
+寄存器组a0--a7(x10--x17)，保存者为--调用者保存，用来传递输入参数。其中a0和a1还用来保存返回值
+寄存器组t0--t6(x5--x7,x28--x31)，保存者为--调用者保存，做为临时寄存器使用，在被调函数中可以随意使用无需保存
+寄存器组s0--s11(x8--x9,x18--x27)，保存者为--被调用者保存，作为临时寄存器使用，被调用函数保存后才能在被调用函数中使用
+zero(x0)恒为零，函数调用不会对它产生影响
+ra(x1)被调用者保存  
+sp(x2)被调用者保存  
+fp(s0)做为s0临时寄存器，做为栈帧指针(Frame Pointer)寄存器  
+gp(x3)和tp(x4)在一个程序运行期间都不会变化，因此不必放在函数调用上下文中  
+栈上多个fp信息实际上保存了一条完整的函数调用链
+ra，sp，fp是和函数调用紧密相关的寄存器
