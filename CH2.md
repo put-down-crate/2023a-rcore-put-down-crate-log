@@ -31,6 +31,24 @@ $ make run
 ``QEMU: Terminated``  
 并退出回到命令行提示状态，QEMU没问题。
 
+进入：  
+``2023a-rcore-put-down-crate/user/target/riscv64gc-unknown-none-elf/release``
+执行：
+``ls ch2*.elf``
+找出第二章所有编译结果
+并执行
+``qemu-riscv64 ch2b_bad_address.elf``  
+``qemu-riscv64 ch2b_bad_register.elf``  
+``qemu-riscv64 ch2b_power_3.elf``  
+``qemu-riscv64 ch2b_power_7.elf``  
+``qemu-riscv64 ch2b_bad_instructions.elf``  
+``qemu-riscv64 ch2b_hello_world.elf``  
+``qemu-riscv64 ch2b_power_5.elf``  
+可以输见到输出结果与代码执行预期相同
+
+
+
+
 ### 2.本章关注点
 #### 2.1. 连接核心与用户应用
 ##### 2.1.1. 把应用程序执行文件从 ELF 执行文件格式变成 Binary 格式（通过 rust-objcopy 可以轻松完成）
